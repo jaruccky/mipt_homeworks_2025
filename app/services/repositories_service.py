@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Any
+
 from aiofile import async_open
 
 from app.infrastructure.github_client import GitHubClient
-
 
 STATIC_DIR = Path("app/static")
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -86,23 +86,37 @@ async def search_and_save_repositories(
         forks_max=forks_max,
     )
 
-    per_page = min(100, limit)
-    page = offset // per_page + 1
+    per_page = 100
+    start_page = offset // per_page + 1
+    start_index = offset % per_page
+    need_total = start_index + limit
 
-    response = await client.search_repositories(
-        query=query,
-        per_page=per_page,
-        page=page,
-    )
+    items: list[dict[str, Any]] = []
+    page = start_page
 
-    items: list[dict[str, Any]] = response.get("items", [])
-    items = items[offset % per_page : offset % per_page + limit]
+    while len(items) < need_total:
+        response = await client.search_repositories(
+            query=query,
+            per_page=per_page,
+            page=page,
+        )
+
+        page_items: list[dict[str, Any]] = response.get("items", [])
+        items.extend(page_items)
+
+        if len(page_items) < per_page:
+            break
+
+        page += 1
+        if page > 10:
+            break
+
+    items = items[start_index : start_index + limit]
 
     filename = f"repositories_{lang}_{limit}_{offset}.csv"
     filepath = STATIC_DIR / filename
 
     async with async_open(filepath, "w", encoding="utf-8") as file:
-        # header
         await file.write(",".join(CSV_HEADER) + "\n")
 
         for repo in items:

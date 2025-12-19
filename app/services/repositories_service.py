@@ -14,6 +14,7 @@ class RepositoriesService:
         self.client = GitHubClient()
 
     def build_query(
+        self,
         lang: str,
         stars_min: int,
         stars_max: int | None,
@@ -33,7 +34,7 @@ class RepositoriesService:
 
         return " ".join(parts)
 
-    def _csv_escape(value: Any) -> str:
+    def _csv_escape(self, value: Any) -> str:
         if value is None:
             return ""
         text = str(value)

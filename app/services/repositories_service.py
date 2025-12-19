@@ -4,153 +4,132 @@ from typing import Any
 from aiofile import async_open
 
 from app.infrastructure.github_client import GitHubClient
-
-STATIC_DIR = Path("app/static")
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
-
-CSV_HEADER: list[str] = [
-    "Name",
-    "Description",
-    "URL",
-    "Created At",
-    "Updated At",
-    "Homepage",
-    "Size",
-    "Stars",
-    "Forks",
-    "Issues",
-    "Watchers",
-    "Language",
-    "License",
-    "Topics",
-    "Has Issues",
-    "Has Projects",
-    "Has Downloads",
-    "Has Wiki",
-    "Has Pages",
-    "Has Discussions",
-    "Is Fork",
-    "Is Archived",
-    "Is Template",
-    "Default Branch",
-]
+from app.services.csv_header import CSV_HEADER
 
 
-def build_query(
-    lang: str,
-    stars_min: int,
-    stars_max: int | None,
-    forks_min: int,
-    forks_max: int | None,
-) -> str:
-    parts = [
-        f"language:{lang}",
-        f"stars:>={stars_min}",
-        f"forks:>={forks_min}",
-    ]
+class RepositoriesService:
+    def __init__(self, static_dir: Path) -> None:
+        self.static_dir = static_dir
+        self.static_dir.mkdir(parents=True, exist_ok=True)
+        self.client = GitHubClient()
 
-    if stars_max is not None:
-        parts.append(f"stars:<={stars_max}")
-    if forks_max is not None:
-        parts.append(f"forks:<={forks_max}")
+    def build_query(
+        lang: str,
+        stars_min: int,
+        stars_max: int | None,
+        forks_min: int,
+        forks_max: int | None,
+    ) -> str:
+        parts = [
+            f"language:{lang}",
+            f"stars:>={stars_min}",
+            f"forks:>={forks_min}",
+        ]
 
-    return " ".join(parts)
+        if stars_max is not None:
+            parts.append(f"stars:<={stars_max}")
+        if forks_max is not None:
+            parts.append(f"forks:<={forks_max}")
 
+        return " ".join(parts)
 
-def _csv_escape(value: Any) -> str:
-    if value is None:
-        return ""
-    text = str(value)
-    if "," in text or '"' in text or "\n" in text:
-        text = text.replace('"', '""')
-        return f'"{text}"'
-    return text
+    def _csv_escape(value: Any) -> str:
+        if value is None:
+            return ""
+        text = str(value)
+        if "," in text or '"' in text or "\n" in text:
+            text = text.replace('"', '""')
+            return f'"{text}"'
+        return text
 
+    async def save_repositories_to_csv(
+        self,
+        items: list[dict[str, Any]],
+        filename: str,
+    ) -> None:
+        filepath = self.static_dir / filename
 
-async def search_and_save_repositories(
-    limit: int,
-    offset: int,
-    lang: str,
-    stars_min: int,
-    stars_max: int | None,
-    forks_min: int,
-    forks_max: int | None,
-) -> str:
-    client = GitHubClient()
+        async with async_open(filepath, "w", encoding="utf-8") as file:
+            await file.write(",".join(CSV_HEADER) + "\n")
 
-    query = build_query(
-        lang=lang,
-        stars_min=stars_min,
-        stars_max=stars_max,
-        forks_min=forks_min,
-        forks_max=forks_max,
-    )
+            for repo in items:
+                license_name = repo["license"]["name"] if repo.get("license") else ""
+                topics = ";".join(repo.get("topics", []))
 
-    per_page = 100
-    start_page = offset // per_page + 1
-    start_index = offset % per_page
-    need_total = start_index + limit
+                row = [
+                    repo.get("name"),
+                    repo.get("description"),
+                    repo.get("html_url"),
+                    repo.get("created_at"),
+                    repo.get("updated_at"),
+                    repo.get("homepage"),
+                    repo.get("size"),
+                    repo.get("stargazers_count"),
+                    repo.get("forks_count"),
+                    repo.get("open_issues_count"),
+                    repo.get("watchers_count"),
+                    repo.get("language"),
+                    license_name,
+                    topics,
+                    repo.get("has_issues"),
+                    repo.get("has_projects"),
+                    repo.get("has_downloads"),
+                    repo.get("has_wiki"),
+                    repo.get("has_pages"),
+                    repo.get("has_discussions"),
+                    repo.get("fork"),
+                    repo.get("archived"),
+                    repo.get("is_template"),
+                    repo.get("default_branch"),
+                ]
 
-    items: list[dict[str, Any]] = []
-    page = start_page
+                escaped_row = [self._csv_escape(v) for v in row]
+                await file.write(",".join(escaped_row) + "\n")
 
-    while len(items) < need_total:
-        response = await client.search_repositories(
-            query=query,
-            per_page=per_page,
-            page=page,
+    async def search_and_save_repositories(
+        self,
+        limit: int,
+        offset: int,
+        lang: str,
+        stars_min: int,
+        stars_max: int | None,
+        forks_min: int,
+        forks_max: int | None,
+    ) -> str:
+        query = self.build_query(
+            lang=lang,
+            stars_min=stars_min,
+            stars_max=stars_max,
+            forks_min=forks_min,
+            forks_max=forks_max,
         )
 
-        page_items: list[dict[str, Any]] = response.get("items", [])
-        items.extend(page_items)
+        per_page = 100
+        start_page = offset // per_page + 1
+        start_index = offset % per_page
+        need_total = start_index + limit
 
-        if len(page_items) < per_page:
-            break
+        items: list[dict[str, Any]] = []
+        page = start_page
 
-        page += 1
-        if page > 10:
-            break
+        while len(items) < need_total:
+            response = await self.client.search_repositories(
+                query=query,
+                per_page=per_page,
+                page=page,
+            )
 
-    items = items[start_index : start_index + limit]
+            page_items: list[dict[str, Any]] = response.get("items", [])
+            items.extend(page_items)
 
-    filename = f"repositories_{lang}_{limit}_{offset}.csv"
-    filepath = STATIC_DIR / filename
+            if len(page_items) < per_page or page >= 10:
+                break
 
-    async with async_open(filepath, "w", encoding="utf-8") as file:
-        await file.write(",".join(CSV_HEADER) + "\n")
+            page += 1
 
-        for repo in items:
-            license_name = repo["license"]["name"] if repo.get("license") else ""
-            topics = ";".join(repo.get("topics", []))
+        items = items[start_index : start_index + limit]
 
-            row = [
-                repo.get("name"),
-                repo.get("description"),
-                repo.get("html_url"),
-                repo.get("created_at"),
-                repo.get("updated_at"),
-                repo.get("homepage"),
-                repo.get("size"),
-                repo.get("stargazers_count"),
-                repo.get("forks_count"),
-                repo.get("open_issues_count"),
-                repo.get("watchers_count"),
-                repo.get("language"),
-                license_name,
-                topics,
-                repo.get("has_issues"),
-                repo.get("has_projects"),
-                repo.get("has_downloads"),
-                repo.get("has_wiki"),
-                repo.get("has_pages"),
-                repo.get("has_discussions"),
-                repo.get("fork"),
-                repo.get("archived"),
-                repo.get("is_template"),
-                repo.get("default_branch"),
-            ]
+        filename = f"repositories_{lang}_{limit}_{offset}.csv"
+        await self.save_repositories_to_csv(items, filename)
 
-            escaped_row = [_csv_escape(v) for v in row]
-            await file.write(",".join(escaped_row) + "\n")
-
-    return filename
+        return filename

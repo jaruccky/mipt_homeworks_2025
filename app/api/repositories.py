@@ -1,8 +1,14 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Query
 
-from app.services.repositories_service import search_and_save_repositories
+from app.services.repositories_service import RepositoriesService
 
 router = APIRouter(tags=["repositories"])
+
+repositories_service = RepositoriesService(
+    static_dir=Path("app/static"),
+)
 
 
 @router.get("/repositories/search")
@@ -15,7 +21,7 @@ async def search_repositories(
     forks_min: int = Query(0, ge=0),
     forks_max: int | None = Query(None, ge=0),
 ) -> dict[str, str]:
-    filename = await search_and_save_repositories(
+    filename = await repositories_service.search_and_save_repositories(
         limit=limit,
         offset=offset,
         lang=lang,

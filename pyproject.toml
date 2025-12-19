@@ -5,11 +5,36 @@ description = "MIPT homeworks from base to production service"
 readme = "README.md"
 license = { text = "Apache License 2.0" }
 requires-python = "==3.13.*"
-dependencies = []
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "httpx>=0.27.0",
+    "aiofile>=3.9.0",
+]
 
 [dependency-groups]
 lint = [
     "lefthook>=2.0.3",
     "mypy>=1.18.2",
     "ruff>=0.14.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+fix = true
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.3.0",
 ]

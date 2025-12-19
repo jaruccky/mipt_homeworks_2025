@@ -1,4 +1,4 @@
-SRC_FOLDERS=$(wildcard homework_*)
+SRC_FOLDERS=app run.py
 
 lint:
 	ruff check $(SRC_FOLDERS)

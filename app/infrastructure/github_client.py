@@ -1,20 +1,23 @@
-from typing import Any
-
 import httpx
+from fastapi import HTTPException
+
+from app.core.settings import Settings
+from app.models.github import GitHubSearchResponse
 
 
 class GitHubClient:
-    BASE_URL = "https://api.github.com"
+    def __init__(self, settings: Settings) -> None:
+        self._base_url = settings.github_base_url
 
     async def search_repositories(
         self,
         query: str,
         per_page: int,
         page: int,
-    ) -> Any:
+    ) -> GitHubSearchResponse:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.BASE_URL}/search/repositories",
+                f"{self._base_url}/search/repositories",
                 params={
                     "q": query,
                     "per_page": per_page,
@@ -23,7 +26,6 @@ class GitHubClient:
                 headers={
                     "Accept": "application/vnd.github+json",
                 },
-                timeout=30,
             )
             response.raise_for_status()
-            return response.json()
+            return GitHubSearchResponse.model_validate(response.json())
